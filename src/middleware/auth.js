@@ -1,13 +1,14 @@
 const jwt = require('jsonwebtoken');
 const ApiError = require('../utils/ApiError');
+const User = require('../models/User');
 
-// JWT secret key (should be in .env file in production)
+// JWT secret key
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
 /**
  * Middleware to protect routes requiring authentication
  */
-const protect = (req, res, next) => {
+const protect = async (req, res, next) => {
   try {
     // Get token from header
     let token;
@@ -17,18 +18,25 @@ const protect = (req, res, next) => {
 
     // Check if token exists
     if (!token) {
-      throw new ApiError('Not authorized to access this route', 401);
+      return next(new ApiError('Not authorized to access this route', 401));
     }
 
     try {
       // Verify token
       const decoded = jwt.verify(token, JWT_SECRET);
       
+      // Find user by id
+      const user = await User.findById(decoded.id);
+      
+      if (!user) {
+        return next(new ApiError('User not found', 404));
+      }
+      
       // Add user to request
-      req.user = decoded;
+      req.user = user;
       next();
     } catch (err) {
-      throw new ApiError('Not authorized to access this route', 401);
+      return next(new ApiError('Not authorized to access this route', 401));
     }
   } catch (error) {
     next(error);

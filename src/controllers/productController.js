@@ -1,153 +1,270 @@
-// Temporary in-memory data store
-let products = [
-  { id: 1, name: 'Smartphone', price: 699.99, category: 'Electronics', inStock: true },
-  { id: 2, name: 'Laptop', price: 1299.99, category: 'Electronics', inStock: true },
-  { id: 3, name: 'Headphones', price: 149.99, category: 'Audio', inStock: false }
-];
+const Product = require('../models/Product');
+const ApiError = require('../utils/ApiError');
+const path = require('path');
+const fs = require('fs');
+const { promisify } = require('util');
+
+const unlink = promisify(fs.unlink);
+const access = promisify(fs.access);
 
 // Get all products
-exports.getAllProducts = (req, res) => {
+exports.getAllProducts = async (req, res, next) => {
   try {
+    // Build query
+    let query;
+    
+    // Copy req.query
+    const reqQuery = { ...req.query };
+    
+    // Fields to exclude
+    const removeFields = ['select', 'sort', 'page', 'limit'];
+    
+    // Loop over removeFields and delete them from reqQuery
+    removeFields.forEach(param => delete reqQuery[param]);
+    
+    // Create query string
+    let queryStr = JSON.stringify(reqQuery);
+    
+    // Create operators ($gt, $gte, etc)
+    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+    
+    // Finding resource
+    query = Product.find(JSON.parse(queryStr));
+    
+    // Select Fields
+    if (req.query.select) {
+      const fields = req.query.select.split(',').join(' ');
+      query = query.select(fields);
+    }
+    
+    // Sort
+    if (req.query.sort) {
+      const sortBy = req.query.sort.split(',').join(' ');
+      query = query.sort(sortBy);
+    } else {
+      query = query.sort('-createdAt');
+    }
+    
+    // Pagination
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const total = await Product.countDocuments();
+    
+    query = query.skip(startIndex).limit(limit);
+    
+    // Executing query
+    const products = await query;
+    
+    // Format product data to include absolute image URLs
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const formattedProducts = products.map(product => {
+      const productObj = product.toObject();
+      
+      // Convert relative image paths to absolute URLs
+      if (productObj.image && !productObj.image.startsWith('http')) {
+        productObj.image = `${baseUrl}${productObj.image}`;
+      }
+      
+      return productObj;
+    });
+    
+    // Pagination result
+    const pagination = {};
+    
+    if (endIndex < total) {
+      pagination.next = {
+        page: page + 1,
+        limit
+      };
+    }
+    
+    if (startIndex > 0) {
+      pagination.prev = {
+        page: page - 1,
+        limit
+      };
+    }
+    
     res.status(200).json({
       success: true,
-      count: products.length,
-      data: products
+      count: formattedProducts.length,
+      pagination,
+      data: formattedProducts
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Get a single product by id
-exports.getProductById = (req, res) => {
+exports.getProductById = async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    const product = products.find(product => product.id === id);
+    const product = await Product.findById(req.params.id);
     
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        error: 'Product not found'
-      });
+      return next(new ApiError('Product not found', 404));
+    }
+    
+    // Format product data to include absolute image URL
+    const productObj = product.toObject();
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    
+    // Convert relative image path to absolute URL
+    if (productObj.image && !productObj.image.startsWith('http')) {
+      productObj.image = `${baseUrl}${productObj.image}`;
     }
 
     res.status(200).json({
       success: true,
-      data: product
+      data: productObj
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Create a new product
-exports.createProduct = (req, res) => {
+exports.createProduct = async (req, res, next) => {
   try {
-    const { name, price, category, inStock } = req.body;
+    // Validate required fields
+    const { name, description, price, category } = req.body;
     
-    // Simple validation
-    if (!name || !price) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide name and price'
-      });
+    if (!name || !description || !price || !category) {
+      return next(new ApiError('Please provide name, description, price and category', 400));
     }
     
-    // Create new product
-    const newId = products.length > 0 ? Math.max(...products.map(product => product.id)) + 1 : 1;
-    const newProduct = {
-      id: newId,
-      name,
-      price: parseFloat(price),
-      category: category || 'Uncategorized',
-      inStock: inStock !== undefined ? inStock : true
-    };
+    // Create product
+    const product = await Product.create(req.body);
     
-    products.push(newProduct);
+    // Format response with absolute image URL
+    const productObj = product.toObject();
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    
+    if (productObj.image && !productObj.image.startsWith('http')) {
+      productObj.image = `${baseUrl}${productObj.image}`;
+    }
     
     res.status(201).json({
       success: true,
-      data: newProduct
+      data: productObj
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Update a product
-exports.updateProduct = (req, res) => {
+exports.updateProduct = async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    const { name, price, category, inStock } = req.body;
+    let product = await Product.findById(req.params.id);
     
-    // Find product
-    const productIndex = products.findIndex(product => product.id === id);
-    
-    if (productIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'Product not found'
-      });
+    if (!product) {
+      return next(new ApiError('Product not found', 404));
     }
     
-    // Update product
-    const updatedProduct = {
-      ...products[productIndex],
-      name: name || products[productIndex].name,
-      price: price ? parseFloat(price) : products[productIndex].price,
-      category: category || products[productIndex].category,
-      inStock: inStock !== undefined ? inStock : products[productIndex].inStock
-    };
+    // Check if updating image and old image exists
+    const oldImage = product.image;
+    const newImage = req.body.image;
     
-    products[productIndex] = updatedProduct;
+    // Update the product
+    product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
+    
+    // Delete old image if it's being replaced and not the default image
+    if (oldImage && newImage && oldImage !== newImage && 
+        !oldImage.includes('no-image.jpg') && oldImage.startsWith('/public/images/')) {
+      try {
+        const oldImagePath = path.join(__dirname, '../..', oldImage);
+        // Check if file exists before attempting to delete
+        await access(oldImagePath, fs.constants.F_OK);
+        await unlink(oldImagePath);
+      } catch (err) {
+        // Just log the error, don't prevent the update
+        console.error(`Failed to delete old image: ${err.message}`);
+      }
+    }
+    
+    // Format response with absolute image URL
+    const productObj = product.toObject();
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    
+    if (productObj.image && !productObj.image.startsWith('http')) {
+      productObj.image = `${baseUrl}${productObj.image}`;
+    }
     
     res.status(200).json({
       success: true,
-      data: updatedProduct
+      data: productObj
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Delete a product
-exports.deleteProduct = (req, res) => {
+exports.deleteProduct = async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
+    const product = await Product.findById(req.params.id);
     
-    // Find product
-    const productIndex = products.findIndex(product => product.id === id);
-    
-    if (productIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'Product not found'
-      });
+    if (!product) {
+      return next(new ApiError('Product not found', 404));
     }
     
-    // Remove product
-    products = products.filter(product => product.id !== id);
+    // Delete associated image if it's not the default image
+    if (product.image && !product.image.includes('no-image.jpg') && 
+        product.image.startsWith('/public/images/')) {
+      try {
+        const imagePath = path.join(__dirname, '../..', product.image);
+        // Check if file exists before attempting to delete
+        await access(imagePath, fs.constants.F_OK);
+        await unlink(imagePath);
+      } catch (err) {
+        // Just log the error, don't prevent the delete
+        console.error(`Failed to delete product image: ${err.message}`);
+      }
+    }
+    
+    await product.deleteOne();
     
     res.status(200).json({
       success: true,
       data: {}
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
-}; 
+};
+
+// Get products by category
+exports.getProductsByCategory = async (req, res, next) => {
+  try {
+    const { category } = req.params;
+    
+    // Find products by category
+    const products = await Product.find({ category });
+    
+    // Format response with absolute image URLs
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const formattedProducts = products.map(product => {
+      const productObj = product.toObject();
+      
+      if (productObj.image && !productObj.image.startsWith('http')) {
+        productObj.image = `${baseUrl}${productObj.image}`;
+      }
+      
+      return productObj;
+    });
+    
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      data: formattedProducts
+    });
+  } catch (error) {
+    next(new ApiError(error.message, 500));
+  }
+};

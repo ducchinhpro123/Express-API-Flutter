@@ -1,11 +1,14 @@
-# Express API Server for Flutter
+# Express API Server for Flutter E-Commerce
 
-A simple RESTful API server built with Express.js to serve as a backend for Flutter applications.
+A RESTful API server built with Express.js to serve as a backend for Flutter e-commerce applications.
 
 ## Features
 
 - RESTful API endpoints
-- In-memory data storage (can be extended to use a database)
+- MongoDB integration
+- User authentication with JWT
+- Product management with images
+- Order management system
 - Error handling middleware
 - CORS support
 - Logging with Morgan
@@ -22,7 +25,8 @@ http://localhost:3000/api
 
 - `GET /api/users` - Get all users
 - `GET /api/users/:id` - Get a specific user by ID
-- `POST /api/users` - Create a new user
+- `POST /api/users/register` - Register a new user
+- `POST /api/users/login` - Login user
 - `PUT /api/users/:id` - Update a user
 - `DELETE /api/users/:id` - Delete a user
 
@@ -34,12 +38,26 @@ http://localhost:3000/api
 - `PUT /api/products/:id` - Update a product
 - `DELETE /api/products/:id` - Delete a product
 
+### Orders
+
+- `GET /api/orders` - Get all orders
+- `GET /api/orders/:id` - Get a specific order by ID
+- `POST /api/orders` - Create a new order
+- `PUT /api/orders/:id/status` - Update order status
+- `PUT /api/orders/:id/cancel` - Cancel an order
+
+### Images
+
+- `GET /api/images` - Get all product images
+- `GET /api/images/:filename` - Get a specific image
+
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js (v14 or higher recommended)
 - npm (v6 or higher recommended)
+- MongoDB (local or Atlas)
 - Docker (optional)
 
 ### Installation
@@ -56,11 +74,20 @@ npm install
 
 3. Create a `.env` file based on the example
 ```
-PORT=3000
-NODE_ENV=development
+cp .env.example .env
 ```
 
-4. Start the server
+4. Set up product images
+```
+npm run setup-images
+```
+
+5. Seed the database with initial data
+```
+npm run seed
+```
+
+6. Start the server
 ```
 npm run dev
 ```
@@ -81,54 +108,29 @@ npm run docker-start
 npm run docker-stop
 ```
 
-#### Build the Docker image manually:
-```
-npm run docker-build
-```
-
-#### Run a container manually:
-```
-docker run -p 3000:3000 flutter-api-express
-```
-
-## Development
-
-For development with hot reloading:
-```
-npm run dev
-```
-
-For production:
-```
-npm start
-```
-
 ## Project Structure
 
 ```
 /
 ├── node_modules/
+├── public/
+│   └── images/          # Product images
 ├── src/
-│   ├── controllers/        # Request handlers
-│   ├── middleware/         # Custom middleware
-│   ├── models/             # Data models
-│   ├── routes/             # API routes
-│   ├── utils/              # Utility functions and classes
-│   └── index.js            # Entry point
-├── .env                    # Environment variables
-├── .gitignore              # Git ignore file
-├── package.json            # Dependencies and scripts
-└── README.md               # Project documentation
+│   ├── controllers/     # Request handlers
+│   ├── lib/             # Database connection
+│   ├── middleware/      # Custom middleware
+│   ├── models/          # Mongoose models
+│   ├── routes/          # API routes
+│   ├── utils/           # Utility functions
+│   └── index.js         # Entry point
+├── .dockerignore
+├── .env                 # Environment variables
+├── .gitignore
+├── docker-compose.yml
+├── Dockerfile
+├── package.json
+└── README.md
 ```
-
-## Future Improvements
-
-- Add database integration (MongoDB, PostgreSQL, etc.)
-- Implement authentication with JWT
-- Add input validation
-- Add unit and integration tests
-- Add API documentation with Swagger
-- Add pagination for list endpoints
 
 ## API Documentation
 
@@ -141,12 +143,16 @@ The API uses JWT for authentication. To access protected routes:
 1. Register a new user or login with an existing user
 2. Use the returned token in the Authorization header: `Bearer YOUR_TOKEN`
 
+## Images
+
+Product images are stored in the `public/images` directory and served at `/public/images/:filename`. The image downloader script fetches placeholder images from Unsplash for demo products.
+
 ## Example Users
 
 For testing, you can use these credentials:
-- Email: `john@example.com`, Password: `password123`
-- Email: `jane@example.com`, Password: `password123`
-- Email: `flutter@example.com`, Password: `password123`
+- Email: `john@example.com`, Password: `password123` (Role: user)
+- Email: `jane@example.com`, Password: `password123` (Role: admin)
+- Email: `flutter@example.com`, Password: `password123` (Role: developer)
 
 ## Deployment
 
@@ -169,9 +175,4 @@ vercel login
 npm run deploy
 ```
 
-4. Set up environment variables in the Vercel dashboard:
-   - `JWT_SECRET`: Your JWT secret key
-   - `NODE_ENV`: Set to `production`
-   - `CORS_ORIGIN`: Set to your Flutter app's origin or `*`
-
-5. Your API will be available at the URL provided by Vercel after deployment.
+4. Set up environment variables in the Vercel dashboard.

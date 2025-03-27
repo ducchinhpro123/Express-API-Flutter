@@ -11,18 +11,29 @@
     "docker-stop": "docker-compose down",
     "docker-dev": "docker-compose up -d && docker-compose logs -f",
     "vercel-dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "seed": "node src/seed.js",
+    "seed:local": "MONGO_URI=mongodb://localhost:27017/flutter_ecommerce node src/seed.js",
+    "setup-images": "node -e \"require('./src/utils/imageDownloader').downloadProductImages()\""
   },
-  "keywords": [],
+  "keywords": [
+    "express",
+    "api",
+    "flutter",
+    "mongodb",
+    "ecommerce"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "RESTful API server for Flutter applications",
+  "description": "RESTful API server for Flutter E-Commerce applications",
   "dependencies": {
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-fileupload": "^1.5.1",
     "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.0",
     "morgan": "^1.10.0"
   },
   "devDependencies": {

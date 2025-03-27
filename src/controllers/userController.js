@@ -1,34 +1,5 @@
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const ApiError = require('../utils/ApiError');
-
-// JWT secret key (should be in .env file in production)
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
-
-// Initialize with sample users for Flutter testing
-let users = [
-  { 
-    id: 1, 
-    name: 'John Doe', 
-    email: 'john@example.com', 
-    role: 'user', 
-    password: '$2b$10$6s3BiF5YBGNVnc1zpGZfiOJuCw9bqJ.GQ1xQHaBmR0rmMnNX.Ee8e' // password: 'password123'
-  },
-  { 
-    id: 2, 
-    name: 'Jane Smith', 
-    email: 'jane@example.com', 
-    role: 'admin', 
-    password: '$2b$10$6s3BiF5YBGNVnc1zpGZfiOJuCw9bqJ.GQ1xQHaBmR0rmMnNX.Ee8e' // password: 'password123'
-  },
-  { 
-    id: 3, 
-    name: 'Flutter Dev', 
-    email: 'flutter@example.com', 
-    role: 'developer', 
-    password: '$2b$10$6s3BiF5YBGNVnc1zpGZfiOJuCw9bqJ.GQ1xQHaBmR0rmMnNX.Ee8e' // password: 'password123'
-  }
-];
 
 // Register new user
 exports.register = async (req, res, next) => {
@@ -37,51 +8,34 @@ exports.register = async (req, res, next) => {
     
     // Simple validation
     if (!name || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide name, email and password'
-      });
+      return next(new ApiError('Please provide name, email and password', 400));
     }
     
     // Check if email already exists
-    const existingUser = users.find(user => user.email === email);
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email already registered'
-      });
+      return next(new ApiError('Email already registered', 400));
     }
     
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    
     // Create new user
-    const newId = users.length > 0 ? Math.max(...users.map(user => user.id)) + 1 : 1;
-    const newUser = {
-      id: newId,
+    const user = await User.create({
       name,
       email,
-      password: hashedPassword,
-      role: 'user'
-    };
-    
-    users.push(newUser);
+      password
+    });
     
     // Generate JWT token
-    const token = jwt.sign(
-      { id: newUser.id, email: newUser.email, role: newUser.role },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-    
-    // Don't return password
-    const { password: _, ...userWithoutPassword } = newUser;
+    const token = user.getSignedJwtToken();
     
     res.status(201).json({
       success: true,
       token,
-      data: userWithoutPassword
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
     });
   } catch (error) {
     next(new ApiError(error.message, 500));
@@ -95,44 +49,33 @@ exports.login = async (req, res, next) => {
     
     // Simple validation
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide email and password'
-      });
+      return next(new ApiError('Please provide email and password', 400));
     }
     
-    // Find user by email
-    const user = users.find(user => user.email === email);
+    // Find user by email and include the password field
+    const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid credentials'
-      });
+      return next(new ApiError('Invalid credentials', 401));
     }
     
     // Validate password
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid credentials'
-      });
+      return next(new ApiError('Invalid credentials', 401));
     }
     
     // Generate JWT token
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-    
-    // Don't return password
-    const { password: _, ...userWithoutPassword } = user;
+    const token = user.getSignedJwtToken();
     
     res.status(200).json({
       success: true,
       token,
-      data: userWithoutPassword
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
     });
   } catch (error) {
     next(new ApiError(error.message, 500));
@@ -140,155 +83,110 @@ exports.login = async (req, res, next) => {
 };
 
 // Get all users
-exports.getAllUsers = (req, res) => {
+exports.getAllUsers = async (req, res, next) => {
   try {
-    // Don't send back passwords
-    const usersWithoutPasswords = users.map(user => {
-      const { password, ...userWithoutPassword } = user;
-      return userWithoutPassword;
-    });
+    const users = await User.find();
     
     res.status(200).json({
       success: true,
       count: users.length,
-      data: usersWithoutPasswords
+      data: users
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Get a single user by id
-exports.getUserById = (req, res) => {
+exports.getUserById = async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    const user = users.find(user => user.id === id);
+    const user = await User.findById(req.params.id);
     
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+      return next(new ApiError('User not found', 404));
     }
-
-    // Don't send back password
-    const { password, ...userWithoutPassword } = user;
 
     res.status(200).json({
       success: true,
-      data: userWithoutPassword
+      data: user
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Create a new user
-exports.createUser = (req, res) => {
+exports.createUser = async (req, res, next) => {
   try {
-    const { name, email, role } = req.body;
+    const { name, email, password, role } = req.body;
     
     // Simple validation
-    if (!name || !email) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide name and email'
-      });
+    if (!name || !email || !password) {
+      return next(new ApiError('Please provide name, email and password', 400));
     }
     
     // Create new user
-    const newId = users.length > 0 ? Math.max(...users.map(user => user.id)) + 1 : 1;
-    const newUser = {
-      id: newId,
+    const user = await User.create({
       name,
       email,
+      password,
       role: role || 'user'
-    };
-    
-    users.push(newUser);
+    });
     
     res.status(201).json({
       success: true,
-      data: newUser
+      data: user
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Update a user
-exports.updateUser = (req, res) => {
+exports.updateUser = async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    const { name, email, role } = req.body;
+    let user = await User.findById(req.params.id);
     
-    // Find user
-    const userIndex = users.findIndex(user => user.id === id);
+    if (!user) {
+      return next(new ApiError('User not found', 404));
+    }
     
-    if (userIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    // Check if user is updating themselves or is admin
+    if (req.user.id !== req.params.id && req.user.role !== 'admin') {
+      return next(new ApiError('Not authorized to update this user', 403));
     }
     
     // Update user
-    const updatedUser = {
-      ...users[userIndex],
-      name: name || users[userIndex].name,
-      email: email || users[userIndex].email,
-      role: role || users[userIndex].role
-    };
-    
-    users[userIndex] = updatedUser;
+    user = await User.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
     
     res.status(200).json({
       success: true,
-      data: updatedUser
+      data: user
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
 
 // Delete a user
-exports.deleteUser = (req, res) => {
+exports.deleteUser = async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
+    const user = await User.findById(req.params.id);
     
-    // Find user
-    const userIndex = users.findIndex(user => user.id === id);
-    
-    if (userIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    if (!user) {
+      return next(new ApiError('User not found', 404));
     }
     
-    // Remove user
-    users = users.filter(user => user.id !== id);
+    await user.deleteOne();
     
     res.status(200).json({
       success: true,
       data: {}
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server Error'
-    });
+    next(new ApiError(error.message, 500));
   }
 };
