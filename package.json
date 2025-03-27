@@ -1,0 +1,39 @@
+{
+  "name": "flutter_api_express",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "docker-build": "docker build -t flutter-api-express .",
+    "docker-start": "docker-compose up",
+    "docker-stop": "docker-compose down",
+    "docker-dev": "docker-compose up -d && docker-compose logs -f",
+    "vercel-dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "RESTful API server for Flutter applications",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/flutter_api_express.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/flutter_api_express/issues"
+  },
+  "homepage": "https://github.com/yourusername/flutter_api_express#readme"
+}
