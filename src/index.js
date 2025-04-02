@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const connectDB = require('./lib/db');
 const errorHandler = require('./middleware/errorHandler');
+const { basicLimiter } = require('./middleware/rateLimiter');
 const { setupStaticFiles } = require('./utils/setupServer');
 const app = express();
 
@@ -24,6 +25,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Basic rate limiting for all routes
+app.use(basicLimiter);
 
 // Middleware
 app.use(express.json());

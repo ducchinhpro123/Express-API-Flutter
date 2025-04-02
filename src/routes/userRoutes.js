@@ -1,26 +1,72 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, verifyRefreshToken } = require('../middleware/auth');
+const { authLimiter, userActionLimiter } = require('../middleware/rateLimiter');
 
 // Public routes
-router.post('/register', userController.register);
-router.post('/login', userController.login);
+/**
+ * @route   POST /api/users/register
+ * @desc    Register new user
+ * @access  Public
+ */
+router.post('/register', authLimiter, userController.register);
+
+/**
+ * @route   POST /api/users/login
+ * @desc    Login user
+ * @access  Public
+ */
+router.post('/login', authLimiter, userController.login);
+
+/**
+ * @route   POST /api/users/refresh
+ * @desc    Refresh access token using refresh token
+ * @access  Public (with valid refresh token)
+ */
+router.post('/refresh', authLimiter, verifyRefreshToken, userController.refreshToken);
+
+/**
+ * @route   POST /api/users/logout
+ * @desc    Logout user and invalidate refresh token
+ * @access  Private
+ */
+router.post('/logout', protect, userController.logout);
 
 // Protected routes
-// Get all users - protected, requires authentication
-router.get('/', protect, userController.getAllUsers);
+/**
+ * @route   GET /api/users
+ * @desc    Get all users
+ * @access  Private (Admin only)
+ */
+router.get('/', protect, authorize('admin'), userController.getAllUsers);
 
-// Get a single user by id - protected, requires authentication
+/**
+ * @route   GET /api/users/:id
+ * @desc    Get user by ID
+ * @access  Private
+ */
 router.get('/:id', protect, userController.getUserById);
 
-// Create a new user - protected, admin only
-router.post('/', protect, authorize('admin'), userController.createUser);
+/**
+ * @route   POST /api/users
+ * @desc    Create a new user (admin only)
+ * @access  Private (Admin only)
+ */
+router.post('/', protect, authorize('admin'), userActionLimiter, userController.createUser);
 
-// Update a user - protected, admin or self
-router.put('/:id', protect, userController.updateUser);
+/**
+ * @route   PUT /api/users/:id
+ * @desc    Update a user
+ * @access  Private
+ */
+router.put('/:id', protect, userActionLimiter, userController.updateUser);
 
-// Delete a user - protected, admin only
-router.delete('/:id', protect, authorize('admin'), userController.deleteUser);
+/**
+ * @route   DELETE /api/users/:id
+ * @desc    Delete a user
+ * @access  Private (Admin only)
+ */
+router.delete('/:id', protect, authorize('admin'), userActionLimiter, userController.deleteUser);
 
 module.exports = router;

@@ -268,3 +268,113 @@ exports.getProductsByCategory = async (req, res, next) => {
     next(new ApiError(error.message, 500));
   }
 };
+
+// Add search products functionality
+exports.searchProducts = async (req, res, next) => {
+  try {
+    const { q, category, minPrice, maxPrice, inStock, sort, limit = 10, page = 1 } = req.query;
+    
+    // Base query object
+    const query = {};
+    
+    // Add text search if query is provided
+    if (q) {
+      query.$text = { $search: q };
+    }
+    
+    // Add category filter
+    if (category) {
+      query.category = category;
+    }
+    
+    // Add price range filter
+    if (minPrice || maxPrice) {
+      query.price = {};
+      if (minPrice) query.price.$gte = Number(minPrice);
+      if (maxPrice) query.price.$lte = Number(maxPrice);
+    }
+    
+    // Add stock filter
+    if (inStock !== undefined) {
+      query.inStock = inStock === 'true';
+    }
+    
+    // Calculate pagination
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const startIndex = (pageNum - 1) * limitNum;
+    
+    // Build the aggregation pipeline
+    const pipeline = [
+      { $match: query },
+    ];
+    
+    // Add sorting
+    if (sort) {
+      const sortObject = {};
+      const sortFields = sort.split(',');
+      
+      sortFields.forEach(field => {
+        if (field.startsWith('-')) {
+          sortObject[field.substring(1)] = -1;
+        } else {
+          sortObject[field] = 1;
+        }
+      });
+      
+      pipeline.push({ $sort: sortObject });
+    } else {
+      // Default sort by score (if text search) or by createdAt
+      pipeline.push({ 
+        $sort: q ? { score: { $meta: 'textScore' }, createdAt: -1 } : { createdAt: -1 } 
+      });
+    }
+    
+    // Add projection for text score if searching
+    if (q) {
+      pipeline.push({ 
+        $addFields: { score: { $meta: 'textScore' } } 
+      });
+    }
+    
+    // Count total results (using a copy of the match stage)
+    const totalResults = await Product.countDocuments(query);
+    
+    // Add pagination
+    pipeline.push({ $skip: startIndex });
+    pipeline.push({ $limit: limitNum });
+    
+    // Execute the aggregation
+    const products = await Product.aggregate(pipeline);
+    
+    // Format product data to include absolute image URLs
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const formattedProducts = products.map(product => {
+      // Convert relative image paths to absolute URLs
+      if (product.image && !product.image.startsWith('http')) {
+        product.image = `${baseUrl}${product.image}`;
+      }
+      
+      return product;
+    });
+    
+    // Prepare pagination info
+    const pagination = {
+      currentPage: pageNum,
+      totalPages: Math.ceil(totalResults / limitNum),
+      totalItems: totalResults,
+      hasMore: pageNum < Math.ceil(totalResults / limitNum),
+      limit: limitNum
+    };
+    
+    // Return the results
+    res.status(200).json({
+      success: true,
+      count: formattedProducts.length,
+      pagination,
+      data: formattedProducts
+    });
+  } catch (error) {
+    next(new ApiError(error.message, 500));
+  }
+};

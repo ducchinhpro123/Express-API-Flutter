@@ -1,78 +1,38 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
-const { protect, authorize } = require('../middleware/auth');
 const imageController = require('../controllers/imageController');
+const { protect, authorize } = require('../middleware/auth');
 
-// Get all product images
-router.get('/', (req, res) => {
-  try {
-    const imagesDir = path.join(__dirname, '../../public/images');
-    
-    // Check if directory exists
-    if (!fs.existsSync(imagesDir)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Images directory not found'
-      });
-    }
-    
-    // Read directory
-    const files = fs.readdirSync(imagesDir)
-      .filter(file => {
-        const ext = path.extname(file).toLowerCase();
-        return ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
-      });
-    
-    // Create URLs for each image
-    const imageUrls = files.map(file => {
-      return {
-        filename: file,
-        url: `/public/images/${file}`
-      };
-    });
-    
-    res.status(200).json({
-      success: true,
-      count: imageUrls.length,
-      data: imageUrls
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Error retrieving images'
-    });
-  }
-});
+/**
+ * @route   GET /api/images
+ * @desc    Get all images
+ * @access  Public
+ */
+router.get('/', imageController.getAllImages);
 
-// Get a specific image
-router.get('/:filename', (req, res) => {
-  try {
-    const filename = req.params.filename;
-    const filePath = path.join(__dirname, `../../public/images/${filename}`);
-    
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Image not found'
-      });
-    }
-    
-    res.sendFile(filePath);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Error retrieving image'
-    });
-  }
-});
+/**
+ * @route   GET /api/images/:filename
+ * @desc    Get a specific image (with optional resizing parameters)
+ * @access  Public
+ * @query   width - Optional width in pixels
+ * @query   height - Optional height in pixels
+ * @query   format - Optional format (jpeg, png, webp)
+ * @query   quality - Optional quality (1-100)
+ */
+router.get('/:filename', imageController.getImageByFilename);
 
-// Upload a product image (admin only)
-router.post('/upload', protect, authorize('admin'), imageController.uploadProductImage);
+/**
+ * @route   POST /api/images/upload
+ * @desc    Upload a new image
+ * @access  Private (Admin only)
+ */
+router.post('/upload', protect, authorize('admin'), imageController.uploadImage);
 
-// Delete a product image (admin only)
-router.delete('/:filename', protect, authorize('admin'), imageController.deleteProductImage);
+/**
+ * @route   DELETE /api/images/:filename
+ * @desc    Delete an image
+ * @access  Private (Admin only)
+ */
+router.delete('/:filename', protect, authorize('admin'), imageController.deleteImage);
 
 module.exports = router;

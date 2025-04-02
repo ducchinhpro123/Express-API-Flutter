@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { downloadProductImages } = require('./imageDownloader');
+const imageService = require('./imageService');
 
 /**
  * Function to set up the static files middleware and download images
@@ -8,10 +8,13 @@ const { downloadProductImages } = require('./imageDownloader');
  */
 const setupStaticFiles = async (app) => {
   try {
-    // Download product images
+    // Create directories and download product images
     console.log('Setting up product images...');
-    const imagesDir = await downloadProductImages();
-    console.log(`Images directory set up at: ${imagesDir}`);
+    const directories = await imageService.createDirectories();
+    await imageService.downloadProductImages();
+    
+    console.log(`Images directory set up at: ${directories.imagesDir}`);
+    console.log(`Cache directory set up at: ${directories.cachesDir}`);
     
     // Set up static file serving
     const publicDir = path.join(__dirname, '../../public');

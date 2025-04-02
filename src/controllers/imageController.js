@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
 const ApiError = require('../utils/ApiError');
+const imageService = require('../utils/imageService');
 
 const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
@@ -33,84 +34,144 @@ const ensureImageDirExists = async () => {
   }
 };
 
-// Upload a product image
-exports.uploadProductImage = async (req, res, next) => {
+// Get all images
+exports.getAllImages = async (req, res, next) => {
   try {
-    // Check if file exists in request
-    if (!req.files || Object.keys(req.files).length === 0 || !req.files.image) {
-      return next(new ApiError('No image uploaded', 400));
-    }
-
-    const file = req.files.image;
-
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return next(new ApiError('Please upload a valid image (JPEG, PNG, WEBP)', 400));
-    }
-
-    // Validate file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    if (file.size > maxSize) {
-      return next(new ApiError('Image size should be less than 5MB', 400));
-    }
-
-    // Create a unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const extension = path.extname(file.name);
-    const filename = `product-${uniqueSuffix}${extension}`;
-
-    // Ensure directory exists
-    const imagesDir = await ensureImageDirExists();
-    const filepath = path.join(imagesDir, filename);
-
-    // Save the file
-    await writeFile(filepath, file.data);
-
-    // Create the URL path for the image
-    const imagePath = `/public/images/${filename}`;
-    const imageUrl = `${req.protocol}://${req.get('host')}${imagePath}`;
-
+    const imagesDir = path.join(__dirname, '../../public/images');
+    const files = fs.readdirSync(imagesDir);
+    
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const images = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
+    }).map(file => {
+      return {
+        filename: file,
+        url: `${baseUrl}/public/images/${file}`
+      };
+    });
+    
     res.status(200).json({
       success: true,
-      data: {
-        filename,
-        filepath: imagePath,
-        url: imageUrl
-      }
+      count: images.length,
+      data: images
     });
   } catch (error) {
-    next(new ApiError(`Error uploading image: ${error.message}`, 500));
+    next(new ApiError(error.message, 500));
   }
 };
 
-// Delete a product image
-exports.deleteProductImage = async (req, res, next) => {
+// Get a specific image by filename
+exports.getImageByFilename = async (req, res, next) => {
   try {
     const { filename } = req.params;
-
-    // Prevent path traversal attacks
-    if (filename.includes('..') || filename.includes('/')) {
-      return next(new ApiError('Invalid filename', 400));
-    }
-
-    const filepath = path.join(__dirname, '../../public/images', filename);
-
-    // Check if file exists
+    const { width, height, format, quality } = req.query;
+    
+    // Process image resize request if dimensions are provided
     try {
-      await access(filepath, fs.constants.F_OK);
+      const result = await imageService.getImage(
+        filename, 
+        width, 
+        height, 
+        { 
+          format: format || 'jpeg',
+          quality: quality ? parseInt(quality) : 80
+        }
+      );
+      
+      // If we have a buffer, send it directly
+      if (result.buffer) {
+        const contentType = format === 'png' ? 'image/png' : 
+                            format === 'webp' ? 'image/webp' : 
+                            'image/jpeg';
+        
+        res.set('Content-Type', contentType);
+        res.set('Cache-Control', 'public, max-age=31536000'); // 1 year cache
+        return res.send(result.buffer);
+      }
+      
+      // Otherwise, send the file
+      return res.sendFile(result.filePath, {
+        headers: {
+          'Cache-Control': 'public, max-age=31536000' // 1 year cache
+        }
+      });
     } catch (error) {
-      return next(new ApiError('Image not found', 404));
+      if (error.code === 'ENOENT') {
+        return next(new ApiError(`Image ${filename} not found`, 404));
+      }
+      throw error;
     }
+  } catch (error) {
+    next(new ApiError(error.message, 500));
+  }
+};
 
-    // Delete the file
-    await unlink(filepath);
-
-    res.status(200).json({
+// Upload a new image
+exports.uploadImage = async (req, res, next) => {
+  try {
+    // Check if file exists in the request
+    if (!req.files || !req.files.image) {
+      return next(new ApiError('Please upload an image file', 400));
+    }
+    
+    const imageFile = req.files.image;
+    
+    // Check file type
+    if (!imageFile.mimetype.startsWith('image')) {
+      return next(new ApiError('Please upload an image file', 400));
+    }
+    
+    // Check file size (max 5MB)
+    if (imageFile.size > 5 * 1024 * 1024) {
+      return next(new ApiError('Image size should be less than 5MB', 400));
+    }
+    
+    // Process and upload the image using our service
+    const uploadResult = await imageService.uploadImage(imageFile, {
+      maxWidth: 1200,
+      quality: 80
+    });
+    
+    // Create absolute URL for the image
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    
+    res.status(201).json({
       success: true,
-      data: {}
+      data: {
+        filename: uploadResult.filename,
+        originalFilename: uploadResult.originalFilename,
+        filepath: uploadResult.filepath,
+        url: `${baseUrl}${uploadResult.filepath}`,
+        mimetype: uploadResult.mimetype,
+        size: uploadResult.size
+      }
     });
   } catch (error) {
-    next(new ApiError(`Error deleting image: ${error.message}`, 500));
+    next(new ApiError(error.message, 500));
+  }
+};
+
+// Delete an image
+exports.deleteImage = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    
+    // Delete the image using the service
+    try {
+      await imageService.deleteImage(filename);
+      
+      res.status(200).json({
+        success: true,
+        data: { message: 'Image deleted successfully' }
+      });
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return next(new ApiError(`Image ${filename} not found`, 404));
+      }
+      throw error;
+    }
+  } catch (error) {
+    next(new ApiError(error.message, 500));
   }
 };

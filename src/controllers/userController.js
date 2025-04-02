@@ -1,5 +1,25 @@
 const User = require('../models/User');
 const ApiError = require('../utils/ApiError');
+const jwt = require('jsonwebtoken');
+
+// Generate tokens (access token and refresh token)
+const generateTokens = (id) => {
+  // Generate access token (short-lived)
+  const accessToken = jwt.sign(
+    { id },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_ACCESS_EXPIRE || '1h' }
+  );
+  
+  // Generate refresh token (long-lived)
+  const refreshToken = jwt.sign(
+    { id },
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d' }
+  );
+  
+  return { accessToken, refreshToken };
+};
 
 // Register new user
 exports.register = async (req, res, next) => {
@@ -24,18 +44,22 @@ exports.register = async (req, res, next) => {
       password
     });
     
-    // Generate JWT token
-    const token = user.getSignedJwtToken();
+    // Generate tokens
+    const { accessToken, refreshToken } = generateTokens(user._id);
+    
+    // Save refresh token to user
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+    
+    // Remove password from output
+    user.password = undefined;
+    user.refreshToken = undefined;
     
     res.status(201).json({
       success: true,
-      token,
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
+      token: accessToken,
+      refreshToken: refreshToken,
+      data: user
     });
   } catch (error) {
     next(new ApiError(error.message, 500));
@@ -64,18 +88,22 @@ exports.login = async (req, res, next) => {
       return next(new ApiError('Invalid credentials', 401));
     }
     
-    // Generate JWT token
-    const token = user.getSignedJwtToken();
+    // Generate tokens
+    const { accessToken, refreshToken } = generateTokens(user._id);
+    
+    // Save refresh token to user
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+    
+    // Remove password from output
+    user.password = undefined;
+    user.refreshToken = undefined;
     
     res.status(200).json({
       success: true,
-      token,
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
+      token: accessToken,
+      refreshToken: refreshToken,
+      data: user
     });
   } catch (error) {
     next(new ApiError(error.message, 500));
@@ -181,6 +209,72 @@ exports.deleteUser = async (req, res, next) => {
     }
     
     await user.deleteOne();
+    
+    res.status(200).json({
+      success: true,
+      data: {}
+    });
+  } catch (error) {
+    next(new ApiError(error.message, 500));
+  }
+};
+
+// Refresh Access Token
+exports.refreshToken = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      return next(new ApiError('Refresh token is required', 400));
+    }
+    
+    // Verify refresh token
+    let decoded;
+    try {
+      decoded = jwt.verify(
+        refreshToken, 
+        process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET
+      );
+    } catch (error) {
+      return next(new ApiError('Invalid or expired refresh token', 401));
+    }
+    
+    // Find user by id and check if refresh token matches
+    const user = await User.findById(decoded.id);
+    
+    if (!user || user.refreshToken !== refreshToken) {
+      return next(new ApiError('Invalid refresh token', 401));
+    }
+    
+    // Generate new tokens
+    const tokens = generateTokens(user._id);
+    
+    // Update refresh token in database
+    user.refreshToken = tokens.refreshToken;
+    await user.save({ validateBeforeSave: false });
+    
+    // Return new tokens
+    res.status(200).json({
+      success: true,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken
+    });
+  } catch (error) {
+    next(new ApiError(error.message, 500));
+  }
+};
+
+// Logout user
+exports.logout = async (req, res, next) => {
+  try {
+    // Get user from request object (added by auth middleware)
+    const user = req.user;
+    
+    if (user) {
+      // Clear refresh token
+      user.refreshToken = undefined;
+      await user.save({ validateBeforeSave: false });
+    }
     
     res.status(200).json({
       success: true,
