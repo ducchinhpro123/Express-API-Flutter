@@ -168,6 +168,7 @@ exports.updateProduct = async (req, res, next) => {
     const oldImage = product.image;
     const newImage = req.body.image;
     
+    console.log(req.body);
     // Update the product
     product = await Product.findByIdAndUpdate(req.params.id, req.body, {
       new: true,

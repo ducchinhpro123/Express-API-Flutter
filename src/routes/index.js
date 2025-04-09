@@ -6,12 +6,14 @@ const userRoutes = require('./userRoutes');
 const productRoutes = require('./productRoutes');
 const orderRoutes = require('./orderRoutes');
 const imageRoutes = require('./imageRoutes');
+const adminRoutes = require('./adminRoutes');
 
 // Use route modules
 router.use('/users', userRoutes);
 router.use('/products', productRoutes);
 router.use('/orders', orderRoutes);
 router.use('/images', imageRoutes);
+router.use('/admin', adminRoutes);
 
 // Flutter-specific documentation endpoint
 router.get('/flutter-docs', (req, res) => {
@@ -193,6 +195,18 @@ router.get('/flutter-docs', (req, res) => {
         auth: 'Bearer token required (admin only)'
       }
     },
+    adminEndpoints: {
+      dashboard: {
+        url: '/api/admin/dashboard',
+        method: 'GET',
+        auth: 'Bearer token required (admin only)'
+      },
+      activities: {
+        url: '/api/admin/activities',
+        method: 'GET',
+        auth: 'Bearer token required (admin only)'
+      }
+    },
     exampleCredentials: [
       { email: 'john@example.com', password: 'password123' },
       { email: 'jane@example.com', password: 'password123' },
@@ -212,6 +226,8 @@ router.get('/', (req, res) => {
       '/api/products',
       '/api/orders',
       '/api/images',
+      '/api/admin/dashboard',
+      '/api/admin/activities',
       '/api/flutter-docs'
     ]
   });
