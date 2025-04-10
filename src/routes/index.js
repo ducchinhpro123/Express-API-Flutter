@@ -6,12 +6,14 @@ const userRoutes = require('./userRoutes');
 const productRoutes = require('./productRoutes');
 const orderRoutes = require('./orderRoutes');
 const imageRoutes = require('./imageRoutes');
+const cartRoutes = require('./cartRoutes'); // Import cart routes
 const adminRoutes = require('./adminRoutes');
 
 // Use route modules
 router.use('/users', userRoutes);
 router.use('/products', productRoutes);
 router.use('/orders', orderRoutes);
+router.use('/cart', cartRoutes); // Mount cart routes
 router.use('/images', imageRoutes);
 router.use('/admin', adminRoutes);
 

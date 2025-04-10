@@ -3,6 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const fileUpload = require('express-fileupload');
+const helmet = require('helmet');
 require('dotenv').config();
 
 const connectDB = require('./lib/db');
@@ -25,6 +26,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Security headers
+app.use(helmet());
 
 // Basic rate limiting for all routes
 app.use(basicLimiter);
