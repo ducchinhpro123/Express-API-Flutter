@@ -78,6 +78,10 @@ exports.login = async (req, res, next) => {
     
     // Find user by email and include the password field
     const user = await User.findOne({ email }).select('+password');
+
+    console.log(email);
+    console.log(user);
+
     if (!user) {
       return next(new ApiError('Invalid credentials', 401));
     }
