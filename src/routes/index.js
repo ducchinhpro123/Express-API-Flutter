@@ -163,6 +163,45 @@ router.get('/flutter-docs', (req, res) => {
         auth: 'Bearer token required'
       }
     },
+    cartEndpoints: { // Add documentation for cart endpoints
+      getCart: {
+        url: '/api/cart',
+        method: 'GET',
+        auth: 'Bearer token required',
+        description: 'Get the current user\'s shopping cart'
+      },
+      addItemToCart: {
+        url: '/api/cart/items',
+        method: 'POST',
+        auth: 'Bearer token required',
+        body: {
+          productId: 'String (required, ID of the product)',
+          quantity: 'Number (required, defaults to 1 if not provided)'
+        },
+        description: 'Add an item to the shopping cart'
+      },
+      updateCartItem: {
+        url: '/api/cart/items/:itemId',
+        method: 'PUT',
+        auth: 'Bearer token required',
+        body: {
+          quantity: 'Number (required)'
+        },
+        description: 'Update the quantity of an item in the cart'
+      },
+      removeItemFromCart: {
+        url: '/api/cart/items/:itemId',
+        method: 'DELETE',
+        auth: 'Bearer token required',
+        description: 'Remove an item from the cart'
+      },
+      clearCart: {
+        url: '/api/cart',
+        method: 'DELETE',
+        auth: 'Bearer token required',
+        description: 'Remove all items from the cart'
+      }
+    },
     imageEndpoints: {
       getAllImages: {
         url: '/api/images',
@@ -230,7 +269,8 @@ router.get('/', (req, res) => {
       '/api/images',
       '/api/admin/dashboard',
       '/api/admin/activities',
-      '/api/flutter-docs'
+      '/api/flutter-docs',
+      'api/cart'
     ]
   });
 });
